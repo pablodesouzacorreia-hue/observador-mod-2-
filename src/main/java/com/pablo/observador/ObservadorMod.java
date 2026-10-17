@@ -28,3 +28,4 @@ public class ObservadorMod {
             Diagnostics.log("Setup comum concluído. Configuração carregada: {}", HorrorConfig.summary());
         }
     }
+}
