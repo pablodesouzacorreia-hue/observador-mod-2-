@@ -18,12 +18,13 @@ public class ObservadorMod {
     public static final Logger LOGGER = LogUtils.getLogger();
 
     public ObservadorMod(IEventBus modEventBus, ModContainer container) {
-        container.registerConfig(ModConfig.Type.COMMON, HorrorConfig.SPEC);
+        container.registerConfig(ModConfig.Type.STARTUP, HorrorConfig.SPEC);
         modEventBus.addListener(this::commonSetup);
         LOGGER.info("[Observador] Mod construído.");
     }
 
     private void commonSetup(FMLCommonSetupEvent event) {
-        Diagnostics.log("Setup comum concluído. Configuração carregada: {}", HorrorConfig.summary());
+        if (HorrorConfig.SPEC.isLoaded()) {
+            Diagnostics.log("Setup comum concluído. Configuração carregada: {}", HorrorConfig.summary());
+        }
     }
-}
