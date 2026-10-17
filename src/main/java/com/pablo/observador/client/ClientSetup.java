@@ -14,7 +14,7 @@ public final class ClientSetup {
 
     @SubscribeEvent
     public static void registerLayerDefinitions(EntityRenderersEvent.RegisterLayerDefinitions event) {
-        event.add(ObservadorModel.LAYER, ObservadorModel::createBodyLayer);
+        event.registerLayerDefinition(ObservadorModel.LAYER, ObservadorModel::createBodyLayer);
     }
 
     @SubscribeEvent

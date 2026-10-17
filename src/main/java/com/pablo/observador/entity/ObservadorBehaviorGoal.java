@@ -7,7 +7,6 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.Difficulty;
-import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.ai.goal.Goal;
 import net.minecraft.world.entity.player.Player;
@@ -391,7 +390,6 @@ public class ObservadorBehaviorGoal extends Goal {
 
     private void attack() {
         this.attackCooldown = 25;
-        this.mob.swing(InteractionHand.MAIN_HAND);
         if (this.mob.level() instanceof ServerLevel serverLevel
                 && serverLevel.getDifficulty() != Difficulty.PEACEFUL) {
             float damage = (float) (this.mob.getAttributeValue(Attributes.ATTACK_DAMAGE) * aggression());
