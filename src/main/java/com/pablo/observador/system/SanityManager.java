@@ -7,7 +7,6 @@ import com.pablo.observador.entity.Placement;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
-import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.effect.MobEffectInstance;
@@ -130,8 +129,8 @@ public final class SanityManager {
             Diagnostics.log("Efeito de sanidade baixa aplicado a {}", player.getName().getString());
         }
 
-        if (HorrorConfig.DEBUG_LOGGING.get()) {
-            player.displayClientMessage(Component.literal("Sanidade: " + (int) sanity), true);
+        if (player.tickCount % 200 == 0) {
+            Diagnostics.log("Sanidade de {}: {}", player.getName().getString(), (int) sanity);
         }
     }
 }
