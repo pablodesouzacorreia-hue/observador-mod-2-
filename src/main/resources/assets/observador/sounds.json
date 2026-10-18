@@ -1,0 +1,12 @@
+{
+  "step":   { "sounds": ["observador:step1", "observador:step2", "observador:step3"] },
+  "knock":  { "sounds": ["observador:knock1", "observador:knock2"] },
+  "creak":  { "sounds": ["observador:creak1", "observador:creak2"] },
+  "breath": { "sounds": ["observador:breath1", "observador:breath2"] },
+  "whisper": { "sounds": ["observador:whisper1", "observador:whisper2", "observador:whisper3"] },
+  "dig":    { "sounds": ["observador:dig1", "observador:dig2"] },
+  "scream": { "sounds": ["observador:scream1", "observador:scream2"] },
+  "stinger": { "sounds": ["observador:stinger"] },
+  "chase":  { "sounds": ["observador:chase1", "observador:chase2"] },
+  "jump":   { "sounds": ["observador:jump"] }
+}

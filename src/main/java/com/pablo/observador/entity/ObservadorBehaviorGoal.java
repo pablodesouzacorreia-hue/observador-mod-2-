@@ -2,7 +2,9 @@ package com.pablo.observador.entity;
 
 import com.pablo.observador.Diagnostics;
 import com.pablo.observador.HorrorConfig;
+import com.pablo.observador.sound.ModSounds;
 import java.util.EnumSet;
+import net.minecraft.sounds.SoundSource;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.util.RandomSource;
@@ -45,6 +47,10 @@ public class ObservadorBehaviorGoal extends Goal {
     private int burstTicks;
     private int repathTicks;
     private int fleeCountdown = -1;
+    private int stepTicks;
+    private int breathTicks = 60;
+    private int chaseSoundTicks;
+    private boolean provoked;
     private double speedMod = 1.0;
     private Vec3 lastKnown;
 
@@ -96,12 +102,17 @@ public class ObservadorBehaviorGoal extends Goal {
         return HorrorConfig.AGGRESSION.get() * (0.5 + 0.5 * intensity);
     }
 
+    private boolean canChase() {
+        return this.mob.level().getDifficulty() != Difficulty.PEACEFUL;
+    }
+
+    /** Chance de ela partir para a perseguição quando perde a paciência. Cresce a cada encontro. */
     private double chaseChance() {
-        if (this.mob.level().getDifficulty() == Difficulty.PEACEFUL) {
+        if (!canChase()) {
             return 0.0;
         }
-        double base = 0.04 + this.mob.tension * 0.004;
-        return Math.max(0.0, Math.min(0.6, base * aggression()));
+        double base = 0.18 + this.mob.tension * 0.012;
+        return Math.max(0.0, Math.min(0.75, base * aggression()));
     }
 
     private void vanish(String reason) {
@@ -152,7 +163,7 @@ public class ObservadorBehaviorGoal extends Goal {
             case WATCH -> {
                 this.stateDuration = 100 + rnd.nextInt(140);
                 this.stareTicks = 0;
-                this.stareLimit = 30 + rnd.nextInt(40);
+                this.stareLimit = 60 + rnd.nextInt(60);
                 this.mob.getNavigation().stop();
             }
             case STALK -> {
@@ -164,6 +175,7 @@ public class ObservadorBehaviorGoal extends Goal {
                 this.hits = 0;
                 this.lostTrackTicks = 0;
                 this.attackCooldown = 10;
+                chaseCue(rnd);
             }
             case SEARCH -> this.stateDuration = 240;
         }
@@ -178,10 +190,15 @@ public class ObservadorBehaviorGoal extends Goal {
             return;
         }
         RandomSource rnd = this.mob.getRandom();
+        if (this.mob.mirage) {
+            tickMirage();
+            return;
+        }
         this.stateTicks++;
         if (this.attackCooldown > 0) {
             this.attackCooldown--;
         }
+        ambientSounds(rnd);
 
         if (this.mob.tickCount > MAX_LIFE_TICKS) {
             vanish("tempo de vida esgotado");
@@ -225,6 +242,16 @@ public class ObservadorBehaviorGoal extends Goal {
         boolean senses = los || heard;
         if (senses) {
             this.lastKnown = this.target.position();
+        }
+
+        // Correr na direção dela é provocação: na maioria das vezes ela deixa de fugir e parte para cima.
+        if (!this.provoked && (this.state == State.WATCH || this.state == State.STALK)
+                && distSq < 12.0 * 12.0 && this.target.isSprinting() && canChase()) {
+            this.provoked = true;
+            if (rnd.nextFloat() < 0.6f) {
+                enterState(State.CHASE);
+                return;
+            }
         }
 
         switch (this.state) {
@@ -388,6 +415,64 @@ public class ObservadorBehaviorGoal extends Goal {
         }
     }
 
+    /** Miragem: só fica parada olhando e some um instante depois de ser encarada. */
+    private void tickMirage() {
+        this.stateTicks++;
+        this.mob.getNavigation().stop();
+        this.mob.getLookControl().setLookAt(this.target, 40.0F, 40.0F);
+        if (playerLooksAtMob()) {
+            this.stareTicks++;
+        }
+        if (this.stareTicks > 14 || this.stateTicks > 500) {
+            Diagnostics.log("Miragem desfeita (olhada={}, tempo={})", this.stareTicks, this.stateTicks);
+            this.mob.discard();
+        }
+    }
+
+    /** Passos irregulares enquanto anda e respiração distorcida de vez em quando. */
+    private void ambientSounds(RandomSource rnd) {
+        boolean chasing = this.state == State.CHASE;
+        if (this.mob.getNavigation().isInProgress()) {
+            if (--this.stepTicks <= 0) {
+                this.stepTicks = (chasing ? 5 : 10) + rnd.nextInt(chasing ? 3 : 6);
+                ModSounds.play(this.mob.level(), this.mob.getX(), this.mob.getY(), this.mob.getZ(),
+                        ModSounds.STEP, SoundSource.HOSTILE, chasing ? 1.2F : 0.8F, 0.8F + rnd.nextFloat() * 0.3F);
+            }
+        }
+        // Durante a perseguição: o lamento alto e distorcido se repete vindo da criatura.
+        if (chasing && --this.chaseSoundTicks <= 0) {
+            this.chaseSoundTicks = 55 + rnd.nextInt(35);
+            ModSounds.play(this.mob.level(), this.mob.getX(), this.mob.getEyeY(), this.mob.getZ(),
+                    ModSounds.CHASE, SoundSource.HOSTILE, 2.2F, 0.95F + rnd.nextFloat() * 0.1F);
+        }
+        if (--this.breathTicks <= 0) {
+            this.breathTicks = 160 + rnd.nextInt(240);
+            if (this.mob.distanceToSqr(this.target) < 26.0 * 26.0) {
+                ModSounds.play(this.mob.level(), this.mob.getX(), this.mob.getEyeY(), this.mob.getZ(),
+                        ModSounds.BREATH, SoundSource.HOSTILE, 0.7F, 0.9F + rnd.nextFloat() * 0.2F);
+            }
+        }
+    }
+
+    /**
+     * Susto no início da perseguição: o lamento alto toca na posição do próprio jogador (sem direção,
+     * como se estivesse dentro da cabeça dele). Se os jumpscares estiverem ligados, um grito ou
+     * estímulo extra sai da criatura. O volume geral é controlado por audio.intensidadeSons.
+     */
+    private void chaseCue(RandomSource rnd) {
+        this.chaseSoundTicks = 60 + rnd.nextInt(30);
+        ModSounds.play(this.mob.level(), this.target.getX(), this.target.getEyeY(), this.target.getZ(),
+                ModSounds.CHASE, SoundSource.HOSTILE, 2.5F, 1.0F);
+
+        double jumpscare = HorrorConfig.JUMPSCARE_FREQUENCY.get();
+        if (jumpscare > 0.0 && rnd.nextDouble() < Math.min(0.9, 0.5 * jumpscare + 0.2)) {
+            boolean scream = rnd.nextBoolean();
+            ModSounds.play(this.mob.level(), this.mob.getX(), this.mob.getEyeY(), this.mob.getZ(),
+                    scream ? ModSounds.SCREAM : ModSounds.STINGER, SoundSource.HOSTILE, scream ? 1.5F : 1.0F, 1.0F);
+        }
+        Diagnostics.log("Observador iniciou perseguição");
+    }
+
     private void attack() {
         this.attackCooldown = 25;
         if (this.mob.level() instanceof ServerLevel serverLevel
@@ -395,6 +480,10 @@ public class ObservadorBehaviorGoal extends Goal {
             float damage = (float) (this.mob.getAttributeValue(Attributes.ATTACK_DAMAGE) * aggression());
             if (this.target.hurtServer(serverLevel, serverLevel.damageSources().mobAttack(this.mob), damage)) {
                 this.hits++;
+                if (this.mob.getRandom().nextDouble() < Math.min(1.0, HorrorConfig.JUMPSCARE_FREQUENCY.get() * 1.5)) {
+                    ModSounds.play(serverLevel, this.target.getX(), this.target.getEyeY(), this.target.getZ(),
+                            ModSounds.JUMP, SoundSource.HOSTILE, 2.5F, 1.0F);
+                }
                 Diagnostics.log("Observador acertou o jogador (dano={}, golpes={})", damage, this.hits);
             }
         }

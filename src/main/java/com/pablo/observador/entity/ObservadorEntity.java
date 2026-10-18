@@ -19,15 +19,23 @@ import net.minecraft.world.level.Level;
  *  - luz forte por perto faz a criatura desaparecer;
  *  - acertá-la com um golpe a faz recuar;
  *  - ela só "sente" o jogador por visão direta ou por som de corrida.
+ *
+ * Uma "miragem" é a mesma silhueta, mas inofensiva: nasce nas bordas da visão do jogador
+ * com sanidade baixa e some em um segundo quando ele olha para ela.
  */
 public class ObservadorEntity extends PathfinderMob {
     /** Quanto o jogador já encontrou a criatura (0 a 100). Deixa a IA mais ousada. */
     public int tension = 0;
 
+    /** Miragem: não ataca, não anda, some quando observada. */
+    public boolean mirage = false;
+
     private boolean hurtByPlayer = false;
 
     public ObservadorEntity(EntityType<? extends ObservadorEntity> type, Level level) {
         super(type, level);
+        // Os sons dela são tocados pelo mod (ModSounds); os do jogo base ficam desligados.
+        this.setSilent(true);
     }
 
     public static AttributeSupplier.Builder createAttributes() {
@@ -44,8 +52,17 @@ public class ObservadorEntity extends PathfinderMob {
         this.goalSelector.addGoal(1, new ObservadorBehaviorGoal(this));
     }
 
+    /** Sem nome flutuante sobre a cabeça: o jogador não deve saber o que é. */
+    @Override
+    public boolean shouldShowName() {
+        return false;
+    }
+
     @Override
     public boolean hurtServer(ServerLevel level, DamageSource source, float amount) {
+        if (this.mirage) {
+            return false; // a miragem não existe de verdade
+        }
         boolean result = super.hurtServer(level, source, amount);
         if (result && source.getEntity() instanceof Player) {
             this.hurtByPlayer = true;

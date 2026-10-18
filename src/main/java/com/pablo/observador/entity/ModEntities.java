@@ -17,7 +17,8 @@ public final class ModEntities {
             "observador",
             ObservadorEntity::new,
             MobCategory.MISC,
-            builder -> builder.sized(0.6f, 2.3f).eyeHeight(2.05f).clientTrackingRange(10).updateInterval(2));
+            // noSave: a criatura nunca fica gravada no mundo; só existe enquanto o jogador está lá.
+            builder -> builder.sized(0.7f, 2.5f).eyeHeight(2.1f).clientTrackingRange(10).updateInterval(2).noSave());
 
     private ModEntities() {}
 

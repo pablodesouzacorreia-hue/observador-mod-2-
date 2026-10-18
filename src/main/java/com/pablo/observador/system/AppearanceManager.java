@@ -38,11 +38,12 @@ public final class AppearanceManager {
         if (!(event.getEntity() instanceof ServerPlayer player)) {
             return;
         }
-        if (player.tickCount % 40 != 0 || player.tickCount < 2400) {
-            return; // verifica a cada 2 s e dá 2 min de paz ao entrar no mundo
-        }
         if (!HorrorConfig.SPEC.isLoaded()) {
             return;
+        }
+        boolean fast = HorrorConfig.ACCELERATE_EVENTS.get();
+        if (player.tickCount % 40 != 0 || (!fast && player.tickCount < 2400)) {
+            return; // verifica a cada 2 s e dá 2 min de paz ao entrar no mundo (sem paz no modo de teste)
         }
         if (!(player.level() instanceof ServerLevel level)) {
             return;
@@ -65,11 +66,11 @@ public final class AppearanceManager {
         }
 
         BlockPos playerPos = player.blockPosition();
-        if (level.getMaxLocalRawBrightness(playerPos) > 7) {
+        if (!fast && level.getMaxLocalRawBrightness(playerPos) > 7) {
             return; // só aparece quando o jogador está no escuro
         }
 
-        double chance = 0.03 * freq * intensity;
+        double chance = fast ? 1.0 : 0.03 * freq * intensity;
         if (!level.canSeeSky(playerPos)) {
             chance *= 1.3; // cavernas e interiores
         }
@@ -87,9 +88,9 @@ public final class AppearanceManager {
         }
 
         int encounters = ENCOUNTERS.getOrDefault(id, 0);
-        if (trySpawn(level, player, rnd, Math.min(100, encounters))) {
+        if (trySpawn(level, player, rnd, Math.min(100, encounters), fast)) {
             ENCOUNTERS.put(id, encounters + 1);
-            long cooldown = (long) ((3600 + rnd.nextInt(6000)) / freq);
+            long cooldown = fast ? 600 : (long) ((3600 + rnd.nextInt(6000)) / freq);
             NEXT_ALLOWED.put(id, now + cooldown);
         }
     }
@@ -103,7 +104,8 @@ public final class AppearanceManager {
         return true;
     }
 
-    private static boolean trySpawn(ServerLevel level, ServerPlayer player, RandomSource rnd, int tension) {
+    private static boolean trySpawn(ServerLevel level, ServerPlayer player, RandomSource rnd, int tension,
+                                    boolean fast) {
         for (int i = 0; i < 14; i++) {
             double angle = rnd.nextDouble() * Math.PI * 2.0;
             double dist = 24.0 + rnd.nextDouble() * 16.0;
@@ -118,7 +120,7 @@ public final class AppearanceManager {
             if (Placement.viewDot(player, where) > 0.55) {
                 continue; // nunca nasce no meio da visão do jogador
             }
-            if (level.getMaxLocalRawBrightness(pos) > 9) {
+            if (!fast && level.getMaxLocalRawBrightness(pos) > 9) {
                 continue;
             }
 

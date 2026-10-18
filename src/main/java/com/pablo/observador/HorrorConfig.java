@@ -51,6 +51,10 @@ public final class HorrorConfig {
             .comment("Diagnóstico: escreve no log o que os sistemas do mod estão decidindo.")
             .define("diagnostico.logDetalhado", false);
 
+    public static final ModConfigSpec.BooleanValue ACCELERATE_EVENTS = B
+            .comment("Teste: faz eventos e aparições acontecerem a cada poucos segundos, sem tempo de espera inicial.")
+            .define("diagnostico.acelerarEventos", false);
+
     public static final ModConfigSpec SPEC = B.build();
 
     private HorrorConfig() {}

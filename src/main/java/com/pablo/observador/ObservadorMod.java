@@ -2,7 +2,10 @@ package com.pablo.observador;
 
 import com.mojang.logging.LogUtils;
 import com.pablo.observador.entity.ModEntities;
+import com.pablo.observador.sound.ModSounds;
 import com.pablo.observador.system.AppearanceManager;
+import com.pablo.observador.system.EventManager;
+import com.pablo.observador.system.SanityManager;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.common.Mod;
@@ -12,7 +15,7 @@ import org.slf4j.Logger;
 
 /**
  * Ponto de entrada do mod.
- * Etapa 3: registra a configuração, a entidade O Observador e o gerenciador de aparições.
+ * Registra: configuração, entidade O Observador, sons, aparições, sanidade e eventos psicológicos.
  */
 @Mod(ObservadorMod.MOD_ID)
 public class ObservadorMod {
@@ -22,7 +25,10 @@ public class ObservadorMod {
     public ObservadorMod(IEventBus modEventBus, ModContainer container) {
         container.registerConfig(ModConfig.Type.STARTUP, HorrorConfig.SPEC);
         ModEntities.register(modEventBus);
+        ModSounds.register(modEventBus);
         AppearanceManager.init();
+        SanityManager.init();
+        EventManager.init();
         modEventBus.addListener(this::commonSetup);
         LOGGER.info("[Observador] Mod construído.");
     }
