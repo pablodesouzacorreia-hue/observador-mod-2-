@@ -59,18 +59,6 @@ public final class HorrorConfig {
             .comment("Quantos segundos o jogador precisa olhar para a criatura antes de ela reagir (some, na maioria das vezes).")
             .defineInRange("criaturas.segundosAteSumir", 1.0, 0.2, 10.0);
 
-    public static final ModConfigSpec.BooleanValue FEAR_ENABLED = B
-            .comment("Sistema de medo: pausar o jogo ou ficar parado ouvindo aumenta os sons e deixa a criatura mais ousada.")
-            .define("medo.ativado", true);
-
-    public static final ModConfigSpec.BooleanValue ANIMALS_STARE = B
-            .comment("Animais e aldeões param e encaram o jogador quando a criatura está por perto.")
-            .define("animais.encaramJogador", true);
-
-    public static final ModConfigSpec.BooleanValue MESSAGES = B
-            .comment("A criatura 'fala' no chat (\"eu te vejo\", \"está sozinho?\").")
-            .define("mensagens.ativadas", true);
-
     public static final ModConfigSpec.BooleanValue COMMANDS_ENABLED = B
             .comment("Comandos de teste /observador. Em servidores públicos, desligue.")
             .define("diagnostico.comandosAtivados", true);
