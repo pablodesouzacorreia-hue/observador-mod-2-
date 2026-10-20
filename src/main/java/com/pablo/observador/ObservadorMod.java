@@ -5,7 +5,10 @@ import com.pablo.observador.entity.ModEntities;
 import com.pablo.observador.sound.ModSounds;
 import com.pablo.observador.system.AppearanceManager;
 import com.pablo.observador.system.EventManager;
+import com.pablo.observador.system.FearManager;
+import com.pablo.observador.system.ModCommands;
 import com.pablo.observador.system.SanityManager;
+import com.pablo.observador.system.StareManager;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.common.Mod;
@@ -29,6 +32,9 @@ public class ObservadorMod {
         AppearanceManager.init();
         SanityManager.init();
         EventManager.init();
+        FearManager.init();
+        StareManager.init();
+        ModCommands.init();
         modEventBus.addListener(this::commonSetup);
         LOGGER.info("[Observador] Mod construído.");
     }

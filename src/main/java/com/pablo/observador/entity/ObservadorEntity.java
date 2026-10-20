@@ -1,5 +1,6 @@
 package com.pablo.observador.entity;
 
+import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.EntityType;
@@ -30,6 +31,14 @@ public class ObservadorEntity extends PathfinderMob {
     /** Miragem: não ataca, não anda, some quando observada. */
     public boolean mirage = false;
 
+    /** Usado pelo comando /observador perseguir: faz a IA iniciar uma perseguição no próximo tick. */
+    public boolean forceChase = false;
+    /** Criada por comando de teste: a luz do dia não a faz sumir. */
+    public boolean testMode = false;
+
+    /** Usado pelo comando /observador chase: nasce já perseguindo. */
+    public boolean startInChase = false;
+
     private boolean hurtByPlayer = false;
 
     public ObservadorEntity(EntityType<? extends ObservadorEntity> type, Level level) {
@@ -56,6 +65,12 @@ public class ObservadorEntity extends PathfinderMob {
     @Override
     public boolean shouldShowName() {
         return false;
+    }
+
+    /** Nome vazio: qualquer lugar que exibir o nome da criatura (etiqueta, mira, mensagens) mostra nada. */
+    @Override
+    public Component getDisplayName() {
+        return Component.empty();
     }
 
     @Override

@@ -61,7 +61,7 @@ public final class AppearanceManager {
         UUID id = player.getUUID();
         long now = level.getGameTime();
         Long next = NEXT_ALLOWED.get(id);
-        if (next != null && now < next) {
+        if (next != null && now < next && FearManager.get(player) < 60.0) {
             return;
         }
 
@@ -70,7 +70,8 @@ public final class AppearanceManager {
             return; // só aparece quando o jogador está no escuro
         }
 
-        double chance = fast ? 1.0 : 0.03 * freq * intensity;
+        double fear = FearManager.get(player);
+        double chance = fast ? 1.0 : 0.03 * freq * intensity * (1.0 + fear / 40.0);
         if (!level.canSeeSky(playerPos)) {
             chance *= 1.3; // cavernas e interiores
         }
@@ -87,9 +88,7 @@ public final class AppearanceManager {
             return;
         }
 
-        int encounters = ENCOUNTERS.getOrDefault(id, 0);
-        if (trySpawn(level, player, rnd, Math.min(100, encounters), fast)) {
-            ENCOUNTERS.put(id, encounters + 1);
+        if (spawnNear(level, player, fast, 24.0, 40.0) != null) {
             long cooldown = fast ? 600 : (long) ((3600 + rnd.nextInt(6000)) / freq);
             NEXT_ALLOWED.put(id, now + cooldown);
         }
@@ -104,11 +103,14 @@ public final class AppearanceManager {
         return true;
     }
 
-    private static boolean trySpawn(ServerLevel level, ServerPlayer player, RandomSource rnd, int tension,
-                                    boolean fast) {
-        for (int i = 0; i < 14; i++) {
+    /** Cria uma criatura de verdade fora do campo de visão do jogador. Retorna null se não achou lugar. */
+    public static ObservadorEntity spawnNear(ServerLevel level, ServerPlayer player, boolean ignoreLight,
+                                             double minDist, double maxDist) {
+        RandomSource rnd = level.getRandom();
+        int tension = Math.min(100, ENCOUNTERS.getOrDefault(player.getUUID(), 0));
+        for (int i = 0; i < 16; i++) {
             double angle = rnd.nextDouble() * Math.PI * 2.0;
-            double dist = 24.0 + rnd.nextDouble() * 16.0;
+            double dist = minDist + rnd.nextDouble() * (maxDist - minDist);
             double x = player.getX() + Math.cos(angle) * dist;
             double z = player.getZ() + Math.sin(angle) * dist;
 
@@ -120,7 +122,7 @@ public final class AppearanceManager {
             if (Placement.viewDot(player, where) > 0.55) {
                 continue; // nunca nasce no meio da visão do jogador
             }
-            if (!fast && level.getMaxLocalRawBrightness(pos) > 9) {
+            if (!ignoreLight && level.getMaxLocalRawBrightness(pos) > 9) {
                 continue;
             }
 
@@ -131,9 +133,10 @@ public final class AppearanceManager {
             }
             entity.tension = tension;
             level.addFreshEntity(entity);
+            ENCOUNTERS.merge(player.getUUID(), 1, Integer::sum);
             Diagnostics.log("Observador apareceu em {} para {} (tensão={})", pos, player.getName().getString(), tension);
-            return true;
+            return entity;
         }
-        return false;
+        return null;
     }
 }

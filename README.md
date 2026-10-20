@@ -47,7 +47,7 @@ multiplayer testada; testes automatizados.
 | `sanidade.ativada` | Liga/desliga a sanidade. |
 | `eventos.psicologicos` | Liga/desliga os eventos psicológicos. |
 | `acessibilidade.reduzirFlashes` | Desliga o escurecimento de tela da sanidade baixa. |
-| `diagnostico.logDetalhado` | Escreve as decisões da IA no log e mostra a sanidade na tela. |
+| `diagnostico.logDetalhado` | Escreve no log (`logs/latest.log`) as decisões da IA, os eventos e a sanidade (a cada 10 s). |
 | `diagnostico.acelerarEventos` | Modo de teste (ver acima). |
 
 ## Como compilar
@@ -79,3 +79,19 @@ gradle wrapper          # uma vez, se não houver ./gradlew
 5. Teste: encará-la (ela some ou muda de lugar), correr até ela (ela costuma perseguir, com o lamento alto),
    tochas por perto (ela some), golpeá-la (ela recua).
 6. Para voltar ao normal, desligue `acelerarEventos`.
+
+## Etapa 5 (NÃO compilada ainda)
+
+Comandos de teste (precisam de operador/trapaças): `/observador aparecer [dist]`, `perseguir`, `remover`,
+`evento <passos|batida|rangido|telhado|escavacao|sussurro|miragem|voz>`, `sanidade <0-100>`, `medo <0-100>`,
+`mensagem`, `status`.
+
+- Criatura some ~1 s depois de ser encarada (exceto quando parte para a perseguição).
+- Mais agressiva à noite, em cavernas e quando o medo é alto.
+- Sistema de medo: pausar o jogo (só mundo individual) ou ficar parado escutando aumenta sons (até +80%),
+  batimento cardíaco, eventos e aparições.
+- Mobs próximos encaram o jogador quando a criatura está perto.
+- Mensagens no chat (`<???> eu te vejo`) e voz "Hi" distorcida.
+- Nome sobre a cabeça removido (renderer).
+
+Ainda não existem: Imitador, Perseguidor, Presença, história/itens, teste multiplayer.

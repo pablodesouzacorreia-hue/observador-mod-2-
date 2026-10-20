@@ -29,6 +29,8 @@ public class ObservadorRenderer
         super.extractRenderState(entity, state, partialTick);
         // Sem isso, no escuro a criatura some por completo; assim a silhueta e os olhos continuam visíveis.
         state.lightCoords = FULL_BRIGHT;
+        // Garante que nenhum nome flutue sobre a cabeça da criatura.
+        state.nameTag = null;
     }
 
     @Override

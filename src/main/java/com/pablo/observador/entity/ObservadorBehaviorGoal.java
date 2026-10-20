@@ -3,6 +3,8 @@ package com.pablo.observador.entity;
 import com.pablo.observador.Diagnostics;
 import com.pablo.observador.HorrorConfig;
 import com.pablo.observador.sound.ModSounds;
+import com.pablo.observador.system.FearManager;
+import com.pablo.observador.system.ThreatTalk;
 import java.util.EnumSet;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.core.BlockPos;
@@ -50,6 +52,8 @@ public class ObservadorBehaviorGoal extends Goal {
     private int stepTicks;
     private int breathTicks = 60;
     private int chaseSoundTicks;
+    private int voiceTicks = 200;
+    private int watchTalks;
     private boolean provoked;
     private double speedMod = 1.0;
     private Vec3 lastKnown;
@@ -99,7 +103,27 @@ public class ObservadorBehaviorGoal extends Goal {
 
     private double aggression() {
         double intensity = HorrorConfig.HORROR_INTENSITY.get();
-        return HorrorConfig.AGGRESSION.get() * (0.5 + 0.5 * intensity);
+        return HorrorConfig.AGGRESSION.get() * (0.5 + 0.5 * intensity) * contextBoost();
+    }
+
+    /** Mais agressiva de noite, dentro de cavernas e quando o jogador está com medo. */
+    private double contextBoost() {
+        if (this.target == null) {
+            return 1.0;
+        }
+        double boost = 1.0;
+        BlockPos pos = this.target.blockPosition();
+        boolean sky = this.mob.level().canSeeSky(pos);
+        if (!sky && pos.getY() < 55) {
+            boost += 0.5; // caverna
+        } else if (sky && this.mob.level().getMaxLocalRawBrightness(pos) <= 7) {
+            boost += 0.35; // noite ao ar livre
+        }
+        return boost + FearManager.get(this.target) / 100.0 * 0.6;
+    }
+
+    private double fearScale() {
+        return this.target == null ? 1.0 : 1.0 - 0.45 * FearManager.get(this.target) / 100.0;
     }
 
     private boolean canChase() {
@@ -112,7 +136,7 @@ public class ObservadorBehaviorGoal extends Goal {
             return 0.0;
         }
         double base = 0.18 + this.mob.tension * 0.012;
-        return Math.max(0.0, Math.min(0.75, base * aggression()));
+        return Math.max(0.0, Math.min(0.9, base * aggression()));
     }
 
     private void vanish(String reason) {
@@ -163,7 +187,7 @@ public class ObservadorBehaviorGoal extends Goal {
             case WATCH -> {
                 this.stateDuration = 100 + rnd.nextInt(140);
                 this.stareTicks = 0;
-                this.stareLimit = 60 + rnd.nextInt(60);
+                this.stareLimit = 20; // some 1 segundo depois de ser vista
                 this.mob.getNavigation().stop();
             }
             case STALK -> {
@@ -194,6 +218,13 @@ public class ObservadorBehaviorGoal extends Goal {
             tickMirage();
             return;
         }
+        if (this.mob.forceChase) {
+            this.mob.forceChase = false;
+            this.provoked = true;
+            this.lightTicks = 0;
+            this.fleeCountdown = -1;
+            enterState(State.CHASE);
+        }
         this.stateTicks++;
         if (this.attackCooldown > 0) {
             this.attackCooldown--;
@@ -212,7 +243,7 @@ public class ObservadorBehaviorGoal extends Goal {
         } else if (this.lightTicks > 0) {
             this.lightTicks = Math.max(0, this.lightTicks - 2);
         }
-        if (this.lightTicks > 60) {
+        if (this.lightTicks > 60 && !this.mob.testMode) {
             vanish("luz forte");
             return;
         }
@@ -263,6 +294,10 @@ public class ObservadorBehaviorGoal extends Goal {
     }
 
     private void tickWatch(RandomSource rnd) {
+        if (this.watchTalks < 2 && this.stateTicks == 40 + this.watchTalks * 60) {
+            this.watchTalks++;
+            ThreatTalk.say(this.target, ThreatTalk.Mood.WATCH, rnd);
+        }
         this.mob.getNavigation().stop();
         this.mob.getLookControl().setLookAt(this.target, 40.0F, 40.0F);
 
@@ -277,7 +312,8 @@ public class ObservadorBehaviorGoal extends Goal {
             float roll = rnd.nextFloat();
             if (roll < chaseChance()) {
                 enterState(State.CHASE);
-            } else if (roll < 0.55f) {
+            } else if (roll < 0.85f) {
+                ThreatTalk.say(this.target, ThreatTalk.Mood.VANISH, rnd);
                 vanish("encarada pelo jogador");
             } else if (relocate(18.0, 32.0)) {
                 enterState(State.STALK);
@@ -309,9 +345,12 @@ public class ObservadorBehaviorGoal extends Goal {
             this.mob.getNavigation().stop();
             this.mob.getLookControl().setLookAt(this.target, 40.0F, 40.0F);
             this.stareTicks++;
-            if (this.stareTicks > 50 + rnd.nextInt(40)) {
+            if (this.stareTicks > 20) {
                 this.stareTicks = 0;
-                if (rnd.nextFloat() < 0.5f) {
+                if (rnd.nextFloat() < chaseChance() * 0.7) {
+                    enterState(State.CHASE);
+                } else if (rnd.nextFloat() < 0.7f) {
+                    ThreatTalk.say(this.target, ThreatTalk.Mood.VANISH, rnd);
                     vanish("encarada enquanto seguia");
                 } else if (!relocate(20.0, 34.0)) {
                     vanish("sem lugar para mudar de posição");
@@ -331,9 +370,10 @@ public class ObservadorBehaviorGoal extends Goal {
         if (--this.repathTicks <= 0) {
             this.repathTicks = 10;
             Vec3 dest = null;
-            if (dist > 26.0) {
+            double k = fearScale();
+            if (dist > 26.0 * k) {
                 dest = known; // aproxima
-            } else if (dist < 15.0) {
+            } else if (dist < 15.0 * k) {
                 dest = this.mob.position().add(toMob.normalize().scale(8.0)); // recua
             }
             if (dest != null) {
@@ -368,7 +408,7 @@ public class ObservadorBehaviorGoal extends Goal {
         if (--this.burstTicks <= 0) {
             this.burstTicks = 20 + rnd.nextInt(40);
             double base = rnd.nextFloat() < 0.5f ? 1.0 : 1.55;
-            this.speedMod = base * Math.max(0.7, Math.min(1.3, 0.85 + 0.15 * aggression()));
+            this.speedMod = base * Math.max(0.7, Math.min(1.5, 0.85 + 0.15 * aggression()));
         }
 
         this.mob.getLookControl().setLookAt(this.target, 30.0F, 30.0F);
@@ -445,6 +485,14 @@ public class ObservadorBehaviorGoal extends Goal {
             ModSounds.play(this.mob.level(), this.mob.getX(), this.mob.getEyeY(), this.mob.getZ(),
                     ModSounds.CHASE, SoundSource.HOSTILE, 2.2F, 0.95F + rnd.nextFloat() * 0.1F);
         }
+        if (HorrorConfig.VOICE_ENABLED.get() && !chasing && --this.voiceTicks <= 0) {
+            double fear = FearManager.get(this.target) / 100.0;
+            this.voiceTicks = (int) ((500 + rnd.nextInt(700)) * (1.0 - 0.6 * fear));
+            if (this.mob.distanceToSqr(this.target) < 45.0 * 45.0) {
+                ModSounds.play(this.mob.level(), this.mob.getX(), this.mob.getEyeY(), this.mob.getZ(),
+                        ModSounds.VOICE, SoundSource.HOSTILE, 1.5F, 0.95F + rnd.nextFloat() * 0.1F);
+            }
+        }
         if (--this.breathTicks <= 0) {
             this.breathTicks = 160 + rnd.nextInt(240);
             if (this.mob.distanceToSqr(this.target) < 26.0 * 26.0) {
@@ -461,6 +509,7 @@ public class ObservadorBehaviorGoal extends Goal {
      */
     private void chaseCue(RandomSource rnd) {
         this.chaseSoundTicks = 60 + rnd.nextInt(30);
+        ThreatTalk.say(this.target, ThreatTalk.Mood.CHASE, rnd, true);
         ModSounds.play(this.mob.level(), this.target.getX(), this.target.getEyeY(), this.target.getZ(),
                 ModSounds.CHASE, SoundSource.HOSTILE, 2.5F, 1.0F);
 

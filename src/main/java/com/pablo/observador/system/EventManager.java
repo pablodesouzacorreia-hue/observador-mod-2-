@@ -31,10 +31,15 @@ import net.neoforged.neoforge.event.tick.ServerTickEvent;
  *
  * Cada evento só entra no sorteio se o contexto combinar (escuro, dentro de casa, caverna, porta por perto,
  * sanidade baixa...). O mesmo evento não se repete duas vezes seguidas. O intervalo entre eventos
- * diminui quando a sanidade cai e é ajustado por intensidadeTerror e frequenciaAparicoes.
+ * diminui quando a sanidade ou o medo sobem e é ajustado por intensidadeTerror e frequenciaAparicoes.
+ * Também podem ser disparados à mão pelo comando /observador evento.
  */
 public final class EventManager {
-    private enum Ev { FOOTSTEPS, KNOCK, CREAK, ROOF, DIG, WHISPER, MIRAGE }
+    private enum Ev { FOOTSTEPS, KNOCK, CREAK, ROOF, DIG, WHISPER, MIRAGE, VOICE }
+
+    /** Nomes aceitos pelo comando /observador evento. */
+    public static final List<String> NAMES = List.of(
+            "passos", "batida", "rangido", "telhado", "escavacao", "sussurro", "miragem", "voz");
 
     private record Task(long tick, Runnable action) {}
 
@@ -52,7 +57,8 @@ public final class EventManager {
 
     // ------------------------------------------------------------------ agendamento de sons
 
-    private static void later(int delayTicks, Runnable action) {
+    /** Executa a ação daqui a alguns ticks (na thread do servidor). */
+    public static void later(int delayTicks, Runnable action) {
         TASKS.add(new Task(serverTicks + delayTicks, action));
     }
 
@@ -73,6 +79,57 @@ public final class EventManager {
         for (Task task : due) {
             task.action().run();
         }
+    }
+
+    // ------------------------------------------------------------------ disparo manual
+
+    /** Dispara um evento pelo nome. Retorna null se deu certo, ou o motivo da falha. */
+    public static String trigger(ServerPlayer player, String name) {
+        if (!(player.level() instanceof ServerLevel level)) {
+            return "Mundo indisponível.";
+        }
+        Ev ev = switch (name.toLowerCase()) {
+            case "passos" -> Ev.FOOTSTEPS;
+            case "batida" -> Ev.KNOCK;
+            case "rangido" -> Ev.CREAK;
+            case "telhado" -> Ev.ROOF;
+            case "escavacao" -> Ev.DIG;
+            case "sussurro" -> Ev.WHISPER;
+            case "miragem" -> Ev.MIRAGE;
+            case "voz" -> Ev.VOICE;
+            default -> null;
+        };
+        if (ev == null) {
+            return "Evento desconhecido. Use: " + String.join(", ", NAMES);
+        }
+        BlockPos door = null;
+        if (ev == Ev.KNOCK || ev == Ev.CREAK) {
+            door = findDoor(level, player.blockPosition());
+            if (door == null) {
+                return "Nenhuma porta entre 4 e 10 blocos de você.";
+            }
+        }
+        if (ev == Ev.VOICE && !HorrorConfig.VOICE_ENABLED.get()) {
+            return "A voz está desligada na configuração (audio.vozDaCriatura).";
+        }
+        if (!execute(ev, level, player, level.getRandom(), door)) {
+            return "Não achei um lugar válido para esse evento agora.";
+        }
+        return null;
+    }
+
+    /** Dispara um evento sonoro qualquer (passos, sussurro ou voz) sem esperar. Usado pelo sistema de medo. */
+    public static void triggerRandom(ServerPlayer player) {
+        if (!(player.level() instanceof ServerLevel level)) {
+            return;
+        }
+        RandomSource rnd = level.getRandom();
+        List<Ev> pool = new ArrayList<>(List.of(Ev.FOOTSTEPS, Ev.WHISPER));
+        if (HorrorConfig.VOICE_ENABLED.get()) {
+            pool.add(Ev.VOICE);
+            pool.add(Ev.VOICE);
+        }
+        execute(pool.get(rnd.nextInt(pool.size())), level, player, rnd, null);
     }
 
     // ------------------------------------------------------------------ sorteio por jogador
@@ -111,6 +168,7 @@ public final class EventManager {
         int light = level.getMaxLocalRawBrightness(pos);
         boolean sky = level.canSeeSky(pos);
         double sanity = SanityManager.get(player);
+        double fear = FearManager.get(player);
         boolean dark = fast || light <= 7;
 
         boolean alone = true;
@@ -140,16 +198,20 @@ public final class EventManager {
         if (dark && (fast || sanity < 75.0 || alone)) {
             options.add(Ev.WHISPER);
         }
+        if (HorrorConfig.VOICE_ENABLED.get() && (dark || fast || fear >= 40.0)) {
+            options.add(Ev.VOICE);
+        }
         boolean noCreatureNear = level.getEntitiesOfClass(ObservadorEntity.class,
                 player.getBoundingBox().inflate(100.0)).isEmpty();
         if (noCreatureNear && (fast || (dark && sanity < 60.0))) {
             options.add(Ev.MIRAGE);
         }
 
-        // Próximo sorteio: mais cedo se a sanidade estiver baixa.
+        // Próximo sorteio: mais cedo se a sanidade estiver baixa ou o medo alto.
         double sanityFactor = 0.55 + 0.45 * sanity / 100.0;
+        double fearFactor = 1.0 - 0.7 * fear / 100.0;
         long interval = fast ? 160 + rnd.nextInt(120)
-                : (long) ((1200 + rnd.nextInt(2400)) * sanityFactor / Math.min(3.0, scale));
+                : (long) ((1200 + rnd.nextInt(2400)) * sanityFactor * fearFactor / Math.min(3.0, scale));
 
         if (options.isEmpty()) {
             NEXT.put(id, serverTicks + 200); // nada combina com o contexto agora; tenta de novo logo
@@ -163,9 +225,13 @@ public final class EventManager {
         LAST.put(id, chosen);
         NEXT.put(id, serverTicks + interval);
 
-        Diagnostics.log("Evento psicológico {} para {} (sanidade={}, luz={})",
-                chosen, player.getName().getString(), (int) sanity, light);
-        switch (chosen) {
+        Diagnostics.log("Evento psicológico {} para {} (sanidade={}, medo={}, luz={})",
+                chosen, player.getName().getString(), (int) sanity, (int) fear, light);
+        execute(chosen, level, player, rnd, door);
+    }
+
+    private static boolean execute(Ev ev, ServerLevel level, ServerPlayer player, RandomSource rnd, BlockPos door) {
+        switch (ev) {
             case FOOTSTEPS -> footsteps(level, player, rnd);
             case KNOCK -> knock(level, door, rnd);
             case CREAK -> ModSounds.play(level, door.getX() + 0.5, door.getY() + 1.0, door.getZ() + 0.5,
@@ -173,20 +239,19 @@ public final class EventManager {
             case ROOF -> roof(level, player, rnd);
             case DIG -> dig(level, player, rnd);
             case WHISPER -> whisper(level, player, rnd);
-            case MIRAGE -> mirage(level, player, rnd);
+            case VOICE -> voice(level, player, rnd);
+            case MIRAGE -> {
+                return mirage(level, player, rnd);
+            }
         }
+        return true;
     }
 
     // ------------------------------------------------------------------ eventos
 
     /** Passos que se aproximam por trás do jogador, irregulares, e param antes de chegar. */
     private static void footsteps(ServerLevel level, ServerPlayer player, RandomSource rnd) {
-        Vec3 look = player.getLookAngle();
-        Vec3 back = new Vec3(-look.x, 0.0, -look.z);
-        if (back.lengthSqr() < 1.0E-4) {
-            back = new Vec3(1.0, 0.0, 0.0);
-        }
-        back = back.normalize();
+        Vec3 back = backward(player);
         Vec3 side = new Vec3(-back.z, 0.0, back.x);
         double sideOffset = (rnd.nextDouble() - 0.5) * 3.0;
         int steps = 4 + rnd.nextInt(3);
@@ -244,17 +309,29 @@ public final class EventManager {
 
     /** Sussurro colado na nuca: sempre do lado oposto ao que o jogador está olhando. */
     private static void whisper(ServerLevel level, ServerPlayer player, RandomSource rnd) {
-        Vec3 look = player.getLookAngle();
-        Vec3 back = new Vec3(-look.x, 0.0, -look.z);
-        back = back.lengthSqr() < 1.0E-4 ? new Vec3(1.0, 0.0, 0.0) : back.normalize();
+        Vec3 back = backward(player);
         Vec3 side = new Vec3(-back.z, 0.0, back.x).scale((rnd.nextDouble() - 0.5) * 1.2);
         Vec3 at = player.getEyePosition().add(back.scale(1.4)).add(side);
         ModSounds.play(level, at.x, at.y, at.z, ModSounds.WHISPER, SoundSource.AMBIENT, 1.0F,
                 0.9F + rnd.nextFloat() * 0.2F);
     }
 
+    /** A voz da criatura dizendo "Hi" de algum ponto escuro ao redor do jogador. */
+    private static void voice(ServerLevel level, ServerPlayer player, RandomSource rnd) {
+        voiceBehind(level, player, rnd, 8.0 + rnd.nextDouble() * 7.0);
+    }
+
+    /** "Hi" vindo de trás do jogador, a essa distância. */
+    public static void voiceBehind(ServerLevel level, ServerPlayer player, RandomSource rnd, double distance) {
+        Vec3 back = backward(player);
+        Vec3 side = new Vec3(-back.z, 0.0, back.x).scale((rnd.nextDouble() - 0.5) * distance * 0.8);
+        Vec3 at = player.getEyePosition().add(back.scale(distance)).add(side);
+        ModSounds.play(level, at.x, at.y, at.z, ModSounds.VOICE, SoundSource.HOSTILE, 1.8F,
+                0.95F + rnd.nextFloat() * 0.1F);
+    }
+
     /** Miragem: a silhueta inofensiva surge na lateral da visão e some no instante em que é encarada. */
-    private static void mirage(ServerLevel level, ServerPlayer player, RandomSource rnd) {
+    private static boolean mirage(ServerLevel level, ServerPlayer player, RandomSource rnd) {
         for (int i = 0; i < 14; i++) {
             double angle = rnd.nextDouble() * Math.PI * 2.0;
             double dist = 14.0 + rnd.nextDouble() * 9.0;
@@ -276,8 +353,18 @@ public final class EventManager {
             }
             level.addFreshEntity(entity);
             Diagnostics.log("Miragem criada em {}", pos);
-            return;
+            return true;
         }
+        return false;
+    }
+
+    // ------------------------------------------------------------------ utilidades
+
+    /** Direção horizontal oposta à que o jogador olha (nunca nula). */
+    private static Vec3 backward(ServerPlayer player) {
+        Vec3 look = player.getLookAngle();
+        Vec3 back = new Vec3(-look.x, 0.0, -look.z);
+        return back.lengthSqr() < 1.0E-4 ? new Vec3(1.0, 0.0, 0.0) : back.normalize();
     }
 
     /** Porta mais próxima do jogador, a pelo menos 4 blocos (para a batida não ser "dentro" dele). */

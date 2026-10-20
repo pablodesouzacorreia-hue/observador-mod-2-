@@ -8,5 +8,7 @@
   "scream": { "sounds": ["observador:scream1", "observador:scream2"] },
   "stinger": { "sounds": ["observador:stinger"] },
   "chase":  { "sounds": ["observador:chase1", "observador:chase2"] },
-  "jump":   { "sounds": ["observador:jump"] }
+  "jump":   { "sounds": ["observador:jump"] },
+  "voice":  { "sounds": ["observador:hi1", "observador:hi2", "observador:hi3", "observador:hi4"] },
+  "heartbeat": { "sounds": ["observador:heartbeat"] }
 }

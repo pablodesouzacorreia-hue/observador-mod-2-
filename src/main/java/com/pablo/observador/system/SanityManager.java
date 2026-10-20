@@ -45,6 +45,10 @@ public final class SanityManager {
         return SANITY.getOrDefault(player.getUUID(), 100.0);
     }
 
+    public static void set(Player player, double value) {
+        SANITY.put(player.getUUID(), Math.max(0.0, Math.min(100.0, value)));
+    }
+
     public static void add(Player player, double delta) {
         if (!enabled()) {
             return;
